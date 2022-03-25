@@ -26,7 +26,6 @@ interface Series {
 }
 interface Season {
     name?: string,
-    lang?: string,
     episodes: string[]
 }
 // Check if descriptor exists

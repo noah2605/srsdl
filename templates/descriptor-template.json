@@ -1,0 +1,16 @@
+{
+    "series": [
+        {
+            "name": "Funny videos",
+            "lang": "EN",
+            "seasons": [
+                {
+                    "name": "Volume 1",
+                    "episodes": [
+                        "https://youtube.com/watch?v=dQw4w9WgXcQ"
+                    ]
+                }
+            ]
+        }
+    ]
+}
