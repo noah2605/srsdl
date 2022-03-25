@@ -11,7 +11,6 @@
  * 
 */
 
-
 import fs from 'fs';
 import cp from 'child_process';
 
@@ -132,13 +131,14 @@ function downloadSeason(series: Series, season: Season) {
 var retries: number[] = [];
 
 function callYTDL(season: Season, series: Series, i: number, path: string) {
-    cp.exec(`youtube-dl ${season.episodes[i - 1]} -o ${path}/${i.toString(10).padStart(2, '0')}.mp4`,
+    cp.exec(`youtube-dl ${season.episodes[i - 1]} --no-check-certificate -o "${path}/${i.toString(10).padStart(2, '0')}.mp4"`,
         (err, stdout, stderr) => {
             if (err) {
                 if (retries[i - 1] > 10) {
                     console.error(`ERROR: Download of episode ${i} failed. Restart the process to try again`);
                     return;
                 }
+                console.log(err);
                 console.error(`ERROR: Download of episode ${i} failed... Retrying in a minute, Try ${retries[i - 1]} of 10`);
                 retries[i - 1]++;
                 setTimeout(() => callYTDL(season, series, i, path), 60000);
