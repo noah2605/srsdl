@@ -71,9 +71,9 @@ function main(args: string[]) {
                 'srsdl edit <series>/<season> episodes <operation>', // Implemented
                 '\tOperations are the following:\n\t\tclear <number>,\n\t\tmove <number1> <number2>,\n\t\tedit <number> <content>,\n\t\tswitch <number1> <number2>',
                 'srsdl remove <series>/<season?>', // Implemented
-                'srsdl config location: configures save location',
-                'srsdl config format: configures format for folder structure',
-                'srsdl config filename: configures format for filename',
+                'srsdl config location: configures save location', // Implemented
+                'srsdl config format: configures format for folder structure', // Implemented
+                'srsdl config filename: configures format for filename', // Implemented
                 '\tWhole format is by default $lang/$series/$season/$episode.mp4',
                 '\t\tAvailable variables for format are $lang, $series, $season and\n\t\t$episode (padded to 2, only for filename format)',
                 '\nREQUIREMENTS:\n',
@@ -199,7 +199,7 @@ function main(args: string[]) {
                         console.error("ERROR: Not a number");
                         return;
                     }
-                    let index2 :number;
+                    let index2: number;
                     switch (args[3]) {
                         case "clear":
                             _episodes[index] = "";
@@ -263,6 +263,7 @@ function main(args: string[]) {
                 }
                 descriptor.series[descriptor.series.indexOf(series)].seasons[series.seasons.indexOf(season)].episodes = [];
             }
+            console.log("Done.");
             save();
             break;
         case "remove":
@@ -291,6 +292,44 @@ function main(args: string[]) {
             break;
         case "list":
             console.log(entries(args[1]));
+            break;
+        case "config":
+            switch (args[1]) {
+                case "location":
+                    (async () => {
+                        const response = await prompts({
+                            type: 'text',
+                            name: 'sav',
+                            message: 'Enter the location for files (relative or absolute): '
+                        });
+                        let s = (response.sav + '/').split('/').join('/');
+                        descriptor.sav = s.startsWith('/') ? s : (s.startsWith('./') ? s : ('./' + s));
+                        save();
+                    })();
+                    break;
+                case "format":
+                    (async () => {
+                        const response = await prompts({
+                            type: 'text',
+                            name: 'format',
+                            message: 'Enter the format (type srsdl help for info): '
+                        });
+                        descriptor.format = response.format;
+                        save();
+                    })();
+                    break;
+                case "filename":
+                    (async () => {
+                        const response = await prompts({
+                            type: 'text',
+                            name: 'filename',
+                            message: 'Enter the format for the filename (type srsdl help for info): '
+                        });
+                        descriptor.filename = response.filename;
+                        save();
+                    })();
+                    break;
+            }
             break;
         default:
             console.log("Unknown option: " + args[0]);
