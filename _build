@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+
+tsc
+echo "#!/usr/bin/env node" | cat - ./build/srsdl.js > ./build/srsdl
+chmod +x ./build/srsdl
+rm ./build/srsdl.js
