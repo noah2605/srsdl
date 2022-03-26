@@ -1,0 +1,7 @@
+package.json
+package-lock.json
+descriptor.json
+test/
+node_modules/
+build/
+out/
