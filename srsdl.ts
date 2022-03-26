@@ -1,7 +1,7 @@
 /* 
  * TODO
  * - Commands
- * 
+ * - Save folder location / Format
  * 
  * 
  * 
@@ -18,7 +18,8 @@ import prompts from 'prompts';
 interface Descriptor {
     series: Series[],
     sav: string,
-    format: string
+    format: string,
+    filename: string
 }
 interface Series {
     name: string,
@@ -65,17 +66,20 @@ function main(args: string[]) {
                 'srsdl clear <series>/<season?>: Clears all episode links from a season', // Implemented
                 'srsdl add season <series>: Creates new season in existing series in descriptor with dialog', // Implemented
                 'srsdl edit <series>/<season> <key> <value>: Edits an existing season', // Implemented
-                'srsdl add episode <series>/<season> <JSON>: Adds single or Array of episode(s) to season',
-                'srsdl add episode <series>/<season> -f/j <Text file> <seperator?=newline>',
-                'srsdl edit <series>/<season> episodes <operation>',
+                'srsdl add episode <series>/<season> <JSON>: Adds single or Array of episode(s) to season', // Implemented
+                'srsdl add episode <series>/<season> -f/j <Text file> <seperator?=newline>: f for file with seperator, j with json file', // Implemented
+                'srsdl edit <series>/<season> episodes <operation>', // Implemented
                 '\tOperations are the following:\n\t\tclear <number>,\n\t\tmove <number1> <number2>,\n\t\tedit <number> <content>,\n\t\tswitch <number1> <number2>',
                 'srsdl remove <series>/<season?>', // Implemented
-                'srsdl location <path (relative or absolute)> <format>',
-                '\tFormat is by default $Lang/$Series/$Season/',
+                'srsdl config location: configures save location',
+                'srsdl config format: configures format for folder structure',
+                'srsdl config filename: configures format for filename',
+                '\tWhole format is by default $lang/$series/$season/$episode.mp4',
+                '\t\tAvailable variables for format are $lang, $series, $season and\n\t\t$episode (padded to 2, only for filename format)',
                 '\nREQUIREMENTS:\n',
                 'youtube-dl: https://youtube-dl.org',
                 'nodejs: https://nodejs.org',
-                'ts-node: https://npmjs.org/package/ts-node'
+                'ts-node/tsc: https://npmjs.org/package/ts-node (DEV)'
             ].join('\n'));
             break;
 
@@ -114,6 +118,30 @@ function main(args: string[]) {
                         .seasons.push({ name: (!response.name || response.name == "") ? `s${series.seasons.length}` : response.name, episodes: [] });
                     save();
                 })();
+            }
+            else if (args[1] == "episode") {
+                path = args[2];
+                if (!path || path == "") {
+                    console.error("Empty Request");
+                    return;
+                }
+                identifiers = path.split('/');
+                series = descriptor.series.find(x => x.name.toLowerCase() == identifiers[0].toLowerCase());
+                if (!series) {
+                    console.error("series name not found");
+                    return;
+                }
+                if (!identifiers[1]) {
+                    console.error('No season given');
+                }
+                else {
+                    let season = series.seasons.find((x, i) => (x.name ?? `s${i}`).toLowerCase() == identifiers[1].toLowerCase());
+                    if (!season) {
+                        console.error("Season \"" + identifiers[1] + "\" not found in series \"" + series.name + "\"");
+                        return;
+                    }
+                    addEpisodes(series, season, args.slice(3));
+                }
             }
             else {
                 console.log('None or unknown option given');
@@ -158,8 +186,53 @@ function main(args: string[]) {
                     console.error("Season \"" + identifiers[1] + "\" not found in series \"" + series.name + "\"");
                     return;
                 }
-                descriptor.series[descriptor.series.indexOf(series)]
-                    .seasons[series.seasons.indexOf(season)][sk] = sv;
+                if (sk == "episodes") {
+                    let _episodes = season.episodes;
+                    if (!args[4] || args[4] == "") {
+                        console.log("Insufficient number of arguments");
+                    }
+                    if (args[3] != "clear" && (!args[5] || args[5] == "")) {
+                        console.log("Insufficient number of arguments");
+                    }
+                    let index = Number(args[4]);
+                    if (!index || isNaN(index)) {
+                        console.error("ERROR: Not a number");
+                        return;
+                    }
+                    let index2 :number;
+                    switch (args[3]) {
+                        case "clear":
+                            _episodes[index] = "";
+                            break;
+                        case "move":
+                            index2 = Number(args[5]);
+                            if (!index2 || isNaN(index2)) {
+                                console.error("ERROR: Not a number");
+                                return;
+                            }
+                            _episodes[index2] = _episodes[index];
+                            break;
+                        case "switch":
+                            index2 = Number(args[5]);
+                            if (!index2 || isNaN(index2)) {
+                                console.error("ERROR: Not a number");
+                                return;
+                            }
+                            _episodes[index2] = season.episodes[index];
+                            _episodes[index] = season.episodes[index2];
+                            break;
+
+                        case "edit":
+                            _episodes[index] = args[5];
+                            break;
+                    }
+                    descriptor.series[descriptor.series.indexOf(series)]
+                        .seasons[series.seasons.indexOf(season)].episodes = _episodes;
+                }
+                else {
+                    descriptor.series[descriptor.series.indexOf(series)]
+                        .seasons[series.seasons.indexOf(season)][sk] = sv;
+                }
                 save();
             }
             console.log("Done.");
@@ -224,6 +297,65 @@ function main(args: string[]) {
             break;
     }
 }
+function addEpisodes(series: Series, season: Season, pars: string[]) {
+    if (!pars || !pars[0] || pars[0] == "") {
+        console.error('ERROR: No episode links specified');
+        return;
+    }
+    if (pars[0] == "-j") {
+        if (pars[1]) {
+            let episodes = JSON.parse(fs.readFileSync(pars[1], 'utf-8')) as string[];
+            if (!episodes || !episodes[0] || episodes[0] == "") {
+                console.error("Invalid JSON");
+                return;
+            }
+            descriptor
+                .series[descriptor.series.indexOf(series)]
+                .seasons[series.seasons.indexOf(season)]
+                .episodes = season.episodes.concat(episodes);
+        }
+    }
+    else if (pars[0] == "-f") {
+        if (pars[1]) {
+            let seperator = '\n';
+            if (pars[2]) seperator = pars[2];
+            let episodes = fs.readFileSync(pars[1], 'utf-8').split(seperator);
+            if (!episodes || !episodes[0] || episodes[0] == "") {
+                console.error("Invalid or empty file content");
+                return;
+            }
+            descriptor
+                .series[descriptor.series.indexOf(series)]
+                .seasons[series.seasons.indexOf(season)]
+                .episodes = season.episodes.concat(episodes);
+        }
+        else {
+            console.error('No file specified');
+            return;
+        }
+    }
+    else {
+        if (pars[0].trim().startsWith('[')) {
+            let episodes = JSON.parse(pars[0]) as string[];
+            if (!episodes || !episodes[0] || episodes[0] == "") {
+                console.error("Invalid JSON");
+                return;
+            }
+            descriptor
+                .series[descriptor.series.indexOf(series)]
+                .seasons[series.seasons.indexOf(season)]
+                .episodes = season.episodes.concat(episodes);
+        }
+        else {
+            descriptor
+                .series[descriptor.series.indexOf(series)]
+                .seasons[series.seasons.indexOf(season)]
+                .episodes.push(pars[0]);
+        }
+    }
+    console.log("Done.");
+    save();
+}
 
 function download(path: string) {
     if (!path || path == "") {
@@ -252,7 +384,7 @@ function download(path: string) {
 
 function downloadSeason(series: Series, season: Season) {
     if (!series || !season) return;
-    let path = `./out/${series.lang}/${series.name}/${season.name}`;
+    let path = `${descriptor.sav}/${descriptor.format.replace('$lang', series.lang).replace('$series', series.name).replace('$season', season.name)}`.split('/').join('/');
     fs.mkdirSync(path, { recursive: true });
     retries = new Array(season.episodes.length).fill(0);
     for (let i = 1; i <= season.episodes.length; i++) {
@@ -260,8 +392,9 @@ function downloadSeason(series: Series, season: Season) {
             console.log(`INFO: Skipped episode ${i}, no link given`);
             continue;
         }
-        if (!fs.existsSync(`${path}/${i.toString(10).padStart(2, '0')}.mp4`))
-            callYTDL(season, series, i, path)
+        let epp = `${descriptor.filename.replace('$episode', i.toString(10).padStart(2, '0')).replace('$lang', series.lang).replace('$series', series.name).replace('$season', season.name)}`;
+        if (!fs.existsSync(`${path}/${epp}.mp4`))
+            callYTDL(season, series, i, path, epp)
         else {
             console.log("INFO: Skipped episode " + i + ", the file exists already in the specified directory");
         }
@@ -270,8 +403,12 @@ function downloadSeason(series: Series, season: Season) {
 
 var retries: number[] = [];
 
-function callYTDL(season: Season, series: Series, i: number, path: string) {
-    cp.exec(`youtube-dl ${season.episodes[i - 1]} --no-check-certificate -o "${path}/${i.toString(10).padStart(2, '0')}.mp4"`,
+function callYTDL(season: Season, series: Series, i: number, path: string, epp: string) {
+    if (!season.episodes[i - 1] || season.episodes[i - 1] == "") {
+        console.error("WARNING: Empty episode link, skipping episode " + i);
+        return;
+    }
+    cp.exec(`youtube-dl ${season.episodes[i - 1]} --no-check-certificate -o "${path}/${epp}.mp4"`,
         (err, stdout, stderr) => {
             if (err) {
                 if (retries[i - 1] > 10) {
@@ -280,7 +417,7 @@ function callYTDL(season: Season, series: Series, i: number, path: string) {
                 }
                 console.error(`ERROR: Download of episode ${i} failed... Retrying in a minute, Try ${retries[i - 1]} of 10`);
                 retries[i - 1]++;
-                setTimeout(() => callYTDL(season, series, i, path), 60000);
+                setTimeout(() => callYTDL(season, series, i, path, epp), 60000);
                 return;
             }
             console.log(`INFO: Episode ${i} downloaded`);
@@ -317,5 +454,10 @@ function entries(identifier: string) {
     }
 }
 let save = () => { fs.writeFileSync('./descriptor.json', JSON.stringify(descriptor)); };
+
+if (!descriptor.sav || descriptor.sav == "") descriptor.sav = "./out/";
+if (!descriptor.format || descriptor.format == "") descriptor.format = "$lang/$series/$season/";
+if (!descriptor.filename || descriptor.filename == "") descriptor.filename = "$episode";
+save();
 
 main(process.argv.slice(process.argv.findIndex(x => x.toLowerCase().includes('srsdl')) + 1));
