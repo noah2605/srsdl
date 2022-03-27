@@ -1,9 +1,7 @@
 /* 
  * TODO
- * - Commands
- * - Save folder location / Format
- * 
- * 
+ * List episodes
+ * Index for edits is off by 1, fix pls
  * 
  * 
  * 
