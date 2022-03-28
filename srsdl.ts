@@ -1,8 +1,6 @@
 /* 
  * TODO
- * List episodes
- * Index for edits is off by 1, fix pls
- * 
+ * up to <config> downloads at the same time(?)
  * 
  * 
  * 
@@ -35,7 +33,7 @@ if (!fs.existsSync("./descriptor.json")) {
 }
 var descriptor: Descriptor = JSON.parse(fs.readFileSync("./descriptor.json", { encoding: "utf-8" }));
 
-function main(args: string[]) {
+async function main(args: string[]) {
     if (!args || !args[0]) { // If no operation is specified
         console.error("No operation specified, 'srsdl help' for help");
         return;
@@ -58,7 +56,7 @@ function main(args: string[]) {
                 'COMMAND LIST:',
                 '\nsrsdl dl <series>/<season?>: Download a Season of a Series or an entire Series', // Implemented
                 'srsdl help: Shows this', // Implemented
-                'srsdl list <series?>: Shows all Series in descriptor or if specified seasons in series', // Implemented
+                'srsdl list <series?>/<season?>: Shows all Series in descriptor or if specified seasons/episodes in series/season', // Implemented
                 'srsdl add series: Creates a new series in descriptor with dialog', // Implemented
                 'srsdl edit <series> <key> <value>: Edits an existing series', // Implemented
                 'srsdl clear <series>/<season?>: Clears all episode links from a season', // Implemented
@@ -99,8 +97,20 @@ function main(args: string[]) {
                 })();
             }
             else if (args[1] == 'season') {
-                series = descriptor.series
-                    .find(x => x.name.toLowerCase() == args[2].toLowerCase());
+                if (args[2])
+                    series = descriptor.series
+                        .find(x => x.name.toLowerCase() == args[2].toLowerCase());
+                else {
+                    await (async () => {
+                        const response = await prompts({
+                            type: 'text',
+                            name: 'series',
+                            message: 'Enter the name of the series parent: '
+                        });
+                        series = descriptor.series
+                            .find(x => x.name.toLowerCase() == response.series.toLowerCase());
+                    })();
+                }
                 if (!series) {
                     console.error("Series not found");
                     return;
@@ -200,7 +210,7 @@ function main(args: string[]) {
                     let index2: number;
                     switch (args[3]) {
                         case "clear":
-                            _episodes[index] = "";
+                            _episodes[index - 1] = "";
                             break;
                         case "move":
                             index2 = Number(args[5]);
@@ -208,7 +218,8 @@ function main(args: string[]) {
                                 console.error("ERROR: Not a number");
                                 return;
                             }
-                            _episodes[index2] = _episodes[index];
+                            _episodes[index2 - 1] = _episodes[index - 1];
+                            _episodes[index - 1] = "";
                             break;
                         case "switch":
                             index2 = Number(args[5]);
@@ -216,12 +227,12 @@ function main(args: string[]) {
                                 console.error("ERROR: Not a number");
                                 return;
                             }
-                            _episodes[index2] = season.episodes[index];
-                            _episodes[index] = season.episodes[index2];
+                            _episodes[index2 - 1] = season.episodes[index - 1];
+                            _episodes[index - 1] = season.episodes[index2 - 1];
                             break;
 
                         case "edit":
-                            _episodes[index] = args[5];
+                            _episodes[index - 1] = args[5];
                             break;
                     }
                     descriptor.series[descriptor.series.indexOf(series)]
@@ -271,9 +282,15 @@ function main(args: string[]) {
                 return;
             }
             identifiers = args[1].split('/');
-            if (!identifiers[1])
-                descriptor.series.splice(descriptor.series
-                    .findIndex(x => x.name.toLowerCase() == identifiers[0].toLowerCase()), 1);
+            if (!identifiers[1]) {
+                let id = descriptor.series
+                    .findIndex(x => x.name.toLowerCase() == identifiers[0].toLowerCase());
+                if (id < 0) {
+                    console.error("Series not found");
+                    return;
+                }
+                descriptor.series.splice(id, 1);
+            }
             else {
                 series = descriptor.series[descriptor.series
                     .findIndex(x => x.name.toLowerCase() == identifiers[0].toLowerCase())]
@@ -390,7 +407,10 @@ function addEpisodes(series: Series, season: Season, pars: string[]) {
                 .episodes.push(pars[0]);
         }
     }
-    console.log("Done.");
+    console.log(`Done. Season now has ${descriptor
+        .series[descriptor.series.indexOf(series)]
+        .seasons[series.seasons.indexOf(season)]
+        .episodes.length} episodes.`);
     save();
 }
 
@@ -477,20 +497,63 @@ function entries(identifier: string) {
             `And Standard Variance of ${variance}`
         ].join('\n');
     } else {
-        let series = descriptor.series.find(x => x.name.toLowerCase() == identifier.toLowerCase());
+        let series = descriptor.series.find(x => x.name.toLowerCase() == identifier.split('/')[0].toLowerCase());
         if (!series) {
             console.error("ERROR: Series not found");
             return;
         }
-        return [
+        if (identifier.split('/').length == 1) return [
             `Seasons: ${series.seasons.length}`,
             ``,
             `List of Seasons: \n${series.seasons.map((x: Season) => `${x.name}: ${x.episodes.length} episodes`).join(",\n")}`,
             `Episodes: ${series.seasons.map((x: Season) => x.episodes.length).reduce((pv, cv) => pv + cv, 0)}`
         ].join('\n');
+        else {
+            let season = series.seasons.find(x => x.name.toLowerCase() == identifier.split('/')[1].toLowerCase());
+            if (!season) {
+                console.error("ERROR: Seeason not found");
+                return;
+            }
+            return [
+                `Season: ${season.name}`,
+                `Member of ${series.name}`,
+                `List of Episodes: \n${season.episodes.map((x, i) => `\t${i}: ${x}`).join(",\n")}`,
+                `Episodes: ${season.episodes.length}`
+            ].join('\n');
+        }
     }
 }
-let save = () => { fs.writeFileSync('./descriptor.json', JSON.stringify(descriptor)); };
+declare global {
+    interface Array<T> { trim(this: Array<T>): Array<T> }
+}
+
+Array.prototype.trim = function (this: any[]) {
+    let _arr: any[] = this;
+    let startIndex = 0;
+    let endIndex = _arr.length;
+    for (let i = 0; i < _arr.length; i++) {
+        if (!_arr[i] || _arr[i] == {} || _arr[i] == [] || _arr[i] == "") startIndex++;
+        else break;
+    }
+    for (let i = _arr.length - 1; i > startIndex; i--) {
+        if (!_arr[i] || _arr[i] == {} || _arr[i] == [] || _arr[i] == "") endIndex--;
+        else break;
+    }
+    return _arr.slice(startIndex, endIndex);
+};
+
+let save = () => {
+    for (let i = 0; i < descriptor.series.length; i++) {
+        for (let ii = 0; ii < descriptor.series[i].seasons.length; ii++) {
+            descriptor.series[i].seasons[ii].episodes =
+                descriptor.series[i].seasons[ii].episodes.trim();
+        }
+        descriptor.series[i].seasons = descriptor.series[i].seasons.trim();
+    }
+    descriptor.series = descriptor.series.trim();
+
+    fs.writeFileSync('./descriptor.json', JSON.stringify(descriptor));
+};
 
 if (!descriptor.sav || descriptor.sav == "") descriptor.sav = "./out/";
 if (!descriptor.format || descriptor.format == "") descriptor.format = "$lang/$series/$season/";
