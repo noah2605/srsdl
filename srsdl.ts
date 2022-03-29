@@ -445,7 +445,7 @@ function download(path: string) {
 
 function downloadSeason(series: Series, season: Season) {
     if (!series || !season) return;
-    let path = `${descriptor.sav}/${descriptor.format.replace('$lang', series.lang).replace('$series', series.name).replace('$season', season.name)}`.split('/').join('/');
+    let path = `${descriptor.sav}/${descriptor.format.replace('$lang', series.lang).replace('$series', series.name).replace('$season', season.name)}`.split('/').filter(x => x != "").join('/');
     fs.mkdirSync(path, { recursive: true });
     retries = new Array(season.episodes.length).fill(0);
     for (let i = 1; i <= season.episodes.length; i++) {
@@ -453,7 +453,7 @@ function downloadSeason(series: Series, season: Season) {
             console.log(`INFO: Skipped episode ${i}, no link given`);
             continue;
         }
-        let epp = `${descriptor.filename.replace('$episode', i.toString(10).padStart(2, '0')).replace('$lang', series.lang).replace('$series', series.name).replace('$season', season.name)}`;
+        let epp = `${descriptor.filename.replace('$episode', i.toString(10).padStart(2, '0')).replace('$lang', series.lang).replace('$series', series.name).replace('$season', season.name)}`.split('/').filter(x => x != "").join('/');
         if (!fs.existsSync(`${path}/${epp}.mp4`))
             queueYTDL(season, series, i, path, epp)
         else {
@@ -462,7 +462,8 @@ function downloadSeason(series: Series, season: Season) {
     }
 }
 
-var queue: Queue<string> = new Queue<string>();
+var queue: Queue<[string, string, number]> = new Queue<[string, string, number]>();
+var queued: number = 0;
 var retries: number[] = [];
 
 function queueYTDL(season: Season, series: Series, i: number, path: string, epp: string) {
@@ -470,20 +471,39 @@ function queueYTDL(season: Season, series: Series, i: number, path: string, epp:
         console.error("WARNING: Empty/invalid episode link, skipping episode " + i);
         return;
     }
-    cp.exec(`youtube-dl ${season.episodes[i - 1]} --no-check-certificate -o "${path}/${epp}.mp4"`,
-        (err, stdout, stderr) => {
-            if (err) {
-                if (retries[i - 1] > 10) {
-                    console.error(`ERROR: Download of episode ${i} failed. Restart the process to try again`);
+    queue.enqueue([`youtube-dl ${season.episodes[i - 1]} --no-check-certificate -o "${path}/${epp}.mp4"`, `${path}/${epp}.mp4`, i]);
+
+    callYTDL();
+}
+
+function callYTDL() {
+    if (queued < descriptor.maxdownloads) {
+        let [call, e, i] :[string, string, number] = queue.dequeue();
+        if (!call) {
+            return;
+        }
+        cp.exec(call,
+            (err, stdout, stderr) => {
+                if (err) {
+                    if (retries[i - 1] > 10) {
+                        console.error(`ERROR: Download of episode "${e}" failed. Restart the process to try again`);
+                        queued--;
+                        callYTDL();
+                        return;
+                    }
+                    console.error(`ERROR: Download of "${e}" failed... Requeueing, Try ${retries[i - 1]} of 10`);
+                    retries[i - 1]++;
+                    queued--;
+                    queue.enqueue([call, e, i]);
+                    callYTDL();
                     return;
                 }
-                console.error(`ERROR: Download of episode ${i} failed... Requeueing, Try ${retries[i - 1]} of 10`);
-                retries[i - 1]++;
-                setTimeout(() => queueYTDL(season, series, i, path, epp), 60000);
-                return;
-            }
-            console.log(`INFO: Episode ${i} downloaded`);
-        });
+                console.log(`INFO: Episode ${e} downloaded`);
+                queued--;
+                callYTDL();
+            });
+        queued++;
+    }
 }
 
 function entries(identifier: string) {
