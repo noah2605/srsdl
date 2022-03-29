@@ -1,21 +1,23 @@
 /* 
  * TODO
  * up to <config> downloads at the same time(?)
- * 
- * 
+ * range edits/array edits for episode
+ * transseasonal edits
  * 
 */
 
 import fs from 'fs';
 import cp from 'child_process';
 import prompts from 'prompts';
+import { Queue } from './Queue';
 
 // Interfaces for JSON Descriptor File
 interface Descriptor {
     series: Series[],
     sav: string,
     format: string,
-    filename: string
+    filename: string,
+    maxdownloads: number
 }
 interface Series {
     name: string,
@@ -40,6 +42,8 @@ async function main(args: string[]) {
     }
     let request = args[0];
     // Switch operation to execute
+
+    // Variables declared here so typescript doesn't complain about the switch context
     let identifiers: string[];
     let series: Series | undefined;
     let season: Season | undefined;
@@ -143,7 +147,7 @@ async function main(args: string[]) {
                     console.error('No season given');
                 }
                 else {
-                    let season = series.seasons.find((x, i) => (x.name ?? `s${i}`).toLowerCase() == identifiers[1].toLowerCase());
+                    season = series.seasons.find(x => x.name.toLowerCase() == identifiers[1].toLowerCase());
                     if (!season) {
                         console.error("Season \"" + identifiers[1] + "\" not found in series \"" + series.name + "\"");
                         return;
@@ -451,18 +455,19 @@ function downloadSeason(series: Series, season: Season) {
         }
         let epp = `${descriptor.filename.replace('$episode', i.toString(10).padStart(2, '0')).replace('$lang', series.lang).replace('$series', series.name).replace('$season', season.name)}`;
         if (!fs.existsSync(`${path}/${epp}.mp4`))
-            callYTDL(season, series, i, path, epp)
+            queueYTDL(season, series, i, path, epp)
         else {
             console.log("INFO: Skipped episode " + i + ", the file exists already in the specified directory");
         }
     }
 }
 
+var queue: Queue<string> = new Queue<string>();
 var retries: number[] = [];
 
-function callYTDL(season: Season, series: Series, i: number, path: string, epp: string) {
+function queueYTDL(season: Season, series: Series, i: number, path: string, epp: string) {
     if (!season.episodes[i - 1] || season.episodes[i - 1] == "") {
-        console.error("WARNING: Empty episode link, skipping episode " + i);
+        console.error("WARNING: Empty/invalid episode link, skipping episode " + i);
         return;
     }
     cp.exec(`youtube-dl ${season.episodes[i - 1]} --no-check-certificate -o "${path}/${epp}.mp4"`,
@@ -472,9 +477,9 @@ function callYTDL(season: Season, series: Series, i: number, path: string, epp: 
                     console.error(`ERROR: Download of episode ${i} failed. Restart the process to try again`);
                     return;
                 }
-                console.error(`ERROR: Download of episode ${i} failed... Retrying in a minute, Try ${retries[i - 1]} of 10`);
+                console.error(`ERROR: Download of episode ${i} failed... Requeueing, Try ${retries[i - 1]} of 10`);
                 retries[i - 1]++;
-                setTimeout(() => callYTDL(season, series, i, path, epp), 60000);
+                setTimeout(() => queueYTDL(season, series, i, path, epp), 60000);
                 return;
             }
             console.log(`INFO: Episode ${i} downloaded`);
@@ -558,6 +563,7 @@ let save = () => {
 if (!descriptor.sav || descriptor.sav == "") descriptor.sav = "./out/";
 if (!descriptor.format || descriptor.format == "") descriptor.format = "$lang/$series/$season/";
 if (!descriptor.filename || descriptor.filename == "") descriptor.filename = "$episode";
+if (!descriptor.maxdownloads || descriptor.maxdownloads < 1) descriptor.maxdownloads = 1;
 save();
 
 main(process.argv.slice(process.argv.findIndex(x => x.toLowerCase().includes('srsdl')) + 1));
