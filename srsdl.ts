@@ -72,6 +72,7 @@ async function main(args: string[]) {
                 '\tOperations are the following:\n\t\tclear <number>,\n\t\tmove <number1> <number2>,\n\t\tedit <number> <content>,\n\t\tswitch <number1> <number2>',
                 'srsdl remove <series>/<season?>', // Implemented
                 'srsdl config location: configures save location', // Implemented
+                'srsdl config maxdownloads: configures maximum number of simultaneous downloads', // Implemented
                 'srsdl config format: configures format for folder structure', // Implemented
                 'srsdl config filename: configures format for filename', // Implemented
                 '\tWhole format is by default $lang/$series/$season/$episode.mp4',
@@ -348,6 +349,21 @@ async function main(args: string[]) {
                         save();
                     })();
                     break;
+                    case "maxdl":
+                    case "maxdownloads":
+                        (async () => {
+                            const response = await prompts({
+                                type: "number",
+                                name: 'mxdl',
+                                message: 'Enter max simultaneous downloads: '
+                            });
+                            descriptor.maxdownloads = response.mxdl;
+                            save();
+                        })();
+                        break;
+                default:
+                    console.error("Unknown config option");
+                    break;
             }
             break;
         default:
@@ -478,10 +494,9 @@ function queueYTDL(season: Season, series: Series, i: number, path: string, epp:
 
 function callYTDL() {
     if (queued < descriptor.maxdownloads) {
-        let [call, e, i] :[string, string, number] = queue.dequeue();
-        if (!call) {
-            return;
-        }
+        let q = queue.dequeue();
+        if (!q) return;
+        let [call, e, i] :[string, string, number] = q;
         cp.exec(call,
             (err, stdout, stderr) => {
                 if (err) {
