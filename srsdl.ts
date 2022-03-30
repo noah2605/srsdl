@@ -465,15 +465,11 @@ function downloadSeason(series: Series, season: Season) {
     fs.mkdirSync(path, { recursive: true });
     retries = new Array(season.episodes.length).fill(0);
     for (let i = 1; i <= season.episodes.length; i++) {
-        if (!season.episodes[i - 1] || season.episodes[i - 1] == "") {
-            console.log(`INFO: Skipped episode ${i}, no link given`);
-            continue;
-        }
         let epp = `${descriptor.filename.replace('$episode', i.toString(10).padStart(2, '0')).replace('$lang', series.lang).replace('$series', series.name).replace('$season', season.name)}`.split('/').filter(x => x != "").join('/');
         if (!fs.existsSync(`${path}/${epp}.mp4`))
             queueYTDL(season, series, i, path, epp)
         else {
-            console.log("INFO: Skipped episode " + i + ", the file exists already in the specified directory");
+            console.log("INFO: Skipped episode " + i + " of " + season.name + ", the file exists already in the specified directory");
         }
     }
 }
@@ -484,7 +480,7 @@ var retries: number[] = [];
 
 function queueYTDL(season: Season, series: Series, i: number, path: string, epp: string) {
     if (!season.episodes[i - 1] || season.episodes[i - 1] == "") {
-        console.error("WARNING: Empty/invalid episode link, skipping episode " + i);
+        console.error("WARNING: Empty/invalid episode link, skipping episode " + i + " of " + season.name);
         return;
     }
     queue.enqueue([`youtube-dl ${season.episodes[i - 1]} --no-check-certificate -o "${path}/${epp}.mp4"`, `${path}/${epp}.mp4`, i]);
